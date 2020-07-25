@@ -1,5 +1,7 @@
 library(tidyverse)
 
+# from American Soccer Analysis MLS Interactive Tables
+# https://app.americansocceranalysis.com/mls/
 game.stats.2020 <- read_csv("american_soccer_analysis_mls_xgoals_games_2020-07-25.csv")
 
 ## Data prep
