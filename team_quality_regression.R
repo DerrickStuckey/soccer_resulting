@@ -96,12 +96,12 @@ for (gameday.cutoff in gameday.cutoffs) {
 
 basic.model.performance <- data.frame(
   "GameDay"=gameday.cutoffs,
-  "Model"="Actual Results",
+  "Extrapolation"="Actual Results",
   "Mean Error"=holdout.mean.error.base.values
 )
 xg.model.performance <- data.frame(
   "GameDay"=gameday.cutoffs,
-  "Model"="xG-Simulated Results",
+  "Extrapolation"="xG-Simulated Results",
   "Mean Error"=holdout.mean.error.xg.values
 )
 
@@ -111,17 +111,13 @@ model.performance.comp <- bind_rows(basic.model.performance,
 # plot Mean Error of extrapolating previous results forward
 # using actual results vs. xG-simulated results
 ggplot(data=model.performance.comp) + 
-  geom_line(mapping=aes(x=GameDay,y=Mean.Error,col=Model)) + 
+  geom_line(mapping=aes(x=GameDay,y=Mean.Error,col=Extrapolation)) + 
   scale_y_reverse() + 
   ggtitle("Simple PPG Extrapolation Models")
 
 
 ## build a linear model to predict points per game based on xG, and one based on actual goals
 ## and a model based on team results
-
-# Note: the training / test split is not totally clean because the "other side" of the holdout 
-# team's results are included in the training data, but that shouldn't cause major problems
-# TODO fix this by removing all games involving the holdout team from training, even their opponent's results
 
 holdout.lm.goals.mean.error.avg.values <- c()
 holdout.lm.xg.mean.error.avg.values <- c()
@@ -145,29 +141,82 @@ for (gameday.cutoff in gameday.cutoffs) {
     group_by(Team) %>%
     summarize(avg.Points.After=mean(Points))
   
+  lm.data <- predictor.data %>% inner_join(label.data, by="Team")
+  # head(lm.data)
+  
   # measure model performance using leave-one-out cross-validation with each team as a holdout
+  for (holdout.team in teams) {
+    holdout.lm.goals.mean.error.crossval.values <- c()
+    holdout.lm.xg.mean.error.crossval.values <- c()
+    holdout.lm.results.mean.error.crossval.values <- c()
+    
+    # Note: the training / test split is not totally clean because the "other side" of the holdout 
+    # team's results are included in the training data, but that shouldn't cause major problems
+    # TODO fix this by removing all games involving the holdout team from training, even their opponent's results
+    training.data <- lm.data %>% filter(Team != holdout.team)
+    test.data <- lm.data %>% filter(Team == holdout.team)
+    
+    # goals-based lm
+    goals.lm <- lm(data=training.data, avg.Points.After ~ avg.Goals + avg.Goals.Against)
+    goals.lm.pred <- predict(goals.lm, newdata = test.data)
+    holdout.lm.goals.mean.error.crossval.val <- mean(abs(test.data$avg.Points.After - goals.lm.pred))
+    holdout.lm.goals.mean.error.crossval.values <- c(holdout.lm.goals.mean.error.crossval.values, holdout.lm.goals.mean.error.crossval.val)
+    
+    # xg-based lm
+    xg.lm <- lm(data=training.data, avg.Points.After ~ avg.xG + avg.xG.Against)
+    xg.lm.pred <- predict(xg.lm, newdata = test.data)
+    holdout.lm.xg.mean.error.crossval.val <- mean(abs(test.data$avg.Points.After - xg.lm.pred))
+    holdout.lm.xg.mean.error.crossval.values <- c(holdout.lm.xg.mean.error.crossval.values, holdout.lm.xg.mean.error.crossval.val)
+    
+    # previous results-based lm
+    results.lm <- lm(data=training.data, avg.Points.After ~ avg.Points.Before)
+    results.lm.pred <- predict(results.lm, newdata = test.data)
+    holdout.lm.results.mean.error.crossval.val <- mean(abs(test.data$avg.Points.After - results.lm.pred))
+    holdout.lm.results.mean.error.crossval.values <- c(holdout.lm.results.mean.error.crossval.values, holdout.lm.results.mean.error.crossval.val)
+    
+    # TODO add "kitchen sink" linear model
+  }
   
-  
-  # a simple model which assumes points per game continue unchanged for each team
-  ppg.before <- training.data %>% group_by(Team) %>% summarise(ppg.before = mean(Points))
-  ppg.after <- test.data %>% group_by(Team) %>% summarise(ppg.after = mean(Points))
-  ppg.merged <- ppg.before %>% inner_join(ppg.after, by=c("Team"="Team"))
-  holdout.mean.error.lm.goals <- mean(abs(ppg.merged$ppg.after - ppg.merged$ppg.before))
-  holdout.mean.error.lm.goals.values <- c(holdout.mean.error.lm.goals.values, holdout.mean.error.lm.goals)
-  
-  # a model which assumes points per game based on xG simulation continue
-  # unchanged for each team
-  ppg.before.xg <- training.data %>% group_by(Team) %>% summarise(ppg.before.simul = mean(Points.xG.Simul))
-  ppg.after <- test.data %>% group_by(Team) %>% summarise(ppg.after = mean(Points))
-  ppg.merged.xg <- ppg.before.xg %>% inner_join(ppg.after, by=c("Team"="Team"))
-  holdout.mean.error.lm.goals <- mean(abs(ppg.merged$ppg.after - ppg.merged$ppg.before))
-  holdout.mean.error.lm.goals.values <- c(holdout.mean.error.lm.goals.values, holdout.mean.error.lm.goals)
-  
-  # a model using a weighted combination of actual and xG-simulated points per game
+  # aggregate the crossval mean errors for each holdout team into a single value per gameday cutoff
+  holdout.lm.goals.mean.error.avg.values <- c(holdout.lm.goals.mean.error.avg.values,
+                                              mean(abs(holdout.lm.goals.mean.error.crossval.values)))
+  holdout.lm.xg.mean.error.avg.values <- c(holdout.lm.xg.mean.error.avg.values,
+                                           mean(abs(holdout.lm.xg.mean.error.crossval.values)))
+  holdout.lm.results.mean.error.avg.values <- c(holdout.lm.results.mean.error.avg.values,
+                                                mean(abs(holdout.lm.results.mean.error.crossval.values)))
 }
 
+goals.lm.performance <- data.frame(
+  "GameDay"=gameday.cutoffs,
+  "Model"="Goals-Based LM",
+  "Mean Error"=holdout.lm.goals.mean.error.avg.values
+)
+xg.lm.performance <- data.frame(
+  "GameDay"=gameday.cutoffs,
+  "Model"="xG-Based LM",
+  "Mean Error"=holdout.lm.xg.mean.error.avg.values
+)
+results.lm.performance <- data.frame(
+  "GameDay"=gameday.cutoffs,
+  "Model"="Results-Based LM",
+  "Mean Error"=holdout.lm.results.mean.error.avg.values
+)
+
+linear.model.performance.comp <- bind_rows(goals.lm.performance,
+                                    xg.lm.performance,
+                                    results.lm.performance)
+
+# plot Mean Error of extrapolating previous results forward
+# using actual results vs. xG-simulated results
+ggplot(data=linear.model.performance.comp) + 
+  geom_line(mapping=aes(x=GameDay,y=Mean.Error,col=Model)) + 
+  scale_y_reverse() + 
+  ggtitle("Linear Models")
+# TODO what accounts for the steep performance drop around gameday 25?
 
 
 ## TODO incorporate multiple years of data
 
+## TODO does counting a draw as 1.5 points for predicting future results help?
+## or using wins and draws as separate predictors?
 
