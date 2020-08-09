@@ -279,6 +279,8 @@ ggplot(data=linear.model.performance.comp.year.agg) +
   # scale_y_reverse() + 
   ggtitle("Linear Models")
 # TODO does future performance really peak this early (around week 9)?
+# probably so, but only because the test dataset is a moving target
+# try fixing test evaluation to weeks 18-34 for all models
 
 
 ## TODO does counting a draw as 1.5 points for predicting future results help?
