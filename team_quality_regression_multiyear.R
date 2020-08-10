@@ -85,7 +85,7 @@ model.performance.comp <- data.frame("GameDay"=c(),
 
 for (year in years) {
   
-  gameday.cutoffs <- 1:30
+  gameday.cutoffs <- 1:24
   
   holdout.mean.error.base.values <- c()
   holdout.mean.error.xg.values <- c()
@@ -94,6 +94,7 @@ for (year in years) {
     training.data <- full.stats %>% filter(Game.Number <= gameday.cutoff,
                                            Year == year)
     test.data <- full.stats %>% filter(Game.Number > gameday.cutoff,
+                                       Game.Number <= (gameday.cutoff+10),
                                        Year == year)
     
     # a simple model which assumes points per game continue unchanged for each team
@@ -137,10 +138,15 @@ model.performance.comp$Year <- as.factor(model.performance.comp$Year)
 
 # plot Mean Error of extrapolating previous results forward
 # using actual results vs. xG-simulated results
-ggplot(data=model.performance.comp) + 
-  geom_line(mapping=aes(x=GameDay,y=Mean.Error,col=Year,linetype=Extrapolation)) + 
-  # scale_y_reverse() + 
-  ggtitle("Simple PPG Extrapolation Models")
+for (year in years) {
+  p <- ggplot(data=model.performance.comp %>% filter(Year==year)) + 
+    geom_line(mapping=aes(x=GameDay,y=Mean.Error,col=Extrapolation)) + 
+    # scale_y_reverse() + 
+    ggtitle(paste("Simple PPG Extrapolation Models (",year,")",sep="")) +
+    ylab("Mean Error in PPG\nover next 10 Games") +
+    xlab("Games into Season")
+  ggsave(plot=p, filename=paste("./plots/ppg_extrapolation_",year,".png",sep=""))
+}
 
 # plot results aggregated across years
 model.performance.comp.year.agg <- model.performance.comp %>%
@@ -149,8 +155,10 @@ model.performance.comp.year.agg <- model.performance.comp %>%
 ggplot(data=model.performance.comp.year.agg) + 
   geom_line(mapping=aes(x=GameDay,y=Mean.Error,col=Extrapolation)) + 
   # scale_y_reverse() + 
-  ggtitle("Simple PPG Extrapolation Models")
-
+  ggtitle("Simple PPG Extrapolation Models\n2013-2019 Average") + 
+  ylab("Mean Error in PPG\nover next 10 Games") +
+  xlab("Games into Season")
+ggsave(filename=paste("./plots/ppg_extrapolation_avg.png",sep=""))
 
 ## build a linear model to predict points per game based on xG, and one based on actual goals
 ## and a model based on team results
@@ -169,7 +177,8 @@ for (year in years) {
   holdout.lm.xg.mean.error.avg.values <- c()
   holdout.lm.results.mean.error.avg.values <- c()
   
-  gameday.cutoffs <- 1:30
+  # use games 1-24 as predictors, predict performance over next 10 games in each case
+  gameday.cutoffs <- 1:24
   
   # measure performance of the linear models at each gameday cutoff
   for (gameday.cutoff in gameday.cutoffs) {
@@ -184,8 +193,10 @@ for (year in years) {
                 avg.Goals=mean(Goals),
                 avg.Goals.Against=mean(Goals.Against),
                 avg.Points.Before=mean(Points))
+    # only look at performance over next 10 games in each case
     label.data <- full.stats %>% 
       filter(Game.Number > gameday.cutoff,
+             Game.Number <= (gameday.cutoff+10),
              Year == year) %>%
       group_by(Team) %>%
       summarize(avg.Points.After=mean(Points))
@@ -265,10 +276,15 @@ linear.model.performance.comp$Year <- as.factor(linear.model.performance.comp$Ye
 
 # plot Mean Error of extrapolating previous results forward
 # using actual results vs. xG-simulated results
-ggplot(data=linear.model.performance.comp) + 
-  geom_line(mapping=aes(x=GameDay,y=Mean.Error,col=Year,linetype=Model)) + 
-  scale_y_reverse() + 
-  ggtitle("Linear Models")
+for (year in years) {
+  p <- ggplot(data=linear.model.performance.comp %>% filter(Year==year)) + 
+    geom_line(mapping=aes(x=GameDay,y=Mean.Error,col=Model)) + 
+    # scale_y_reverse() + 
+    ggtitle(paste("Linear Regression Models (",year,")",sep="")) + 
+    ylab("Mean Error in PPG\nover next 10 Games") +
+    xlab("Games into Season")
+  ggsave(plot=p, filename=paste("./plots/linear_model_perf_",year,".png",sep=""))
+}
 
 # plot results aggregated across years
 linear.model.performance.comp.year.agg <- linear.model.performance.comp %>%
@@ -277,7 +293,10 @@ linear.model.performance.comp.year.agg <- linear.model.performance.comp %>%
 ggplot(data=linear.model.performance.comp.year.agg) + 
   geom_line(mapping=aes(x=GameDay,y=Mean.Error,col=Model)) + 
   # scale_y_reverse() + 
-  ggtitle("Linear Models")
+  ggtitle("Linear Regression Models\n2013-2019 Average") + 
+  ylab("Mean Error in PPG\nover next 10 Games") +
+  xlab("Games into Season")
+ggsave(plot=p, filename="./plots/linear_model_perf_avg.png")
 # TODO does future performance really peak this early (around week 9)?
 # probably so, but only because the test dataset is a moving target
 # try fixing test evaluation to weeks 18-34 for all models
