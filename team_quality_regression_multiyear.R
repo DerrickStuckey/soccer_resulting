@@ -296,10 +296,9 @@ ggplot(data=linear.model.performance.comp.year.agg) +
   ggtitle("Linear Regression Models\n2013-2019 Average") + 
   ylab("Mean Error in PPG\nover next 10 Games") +
   xlab("Games into Season")
-ggsave(plot=p, filename="./plots/linear_model_perf_avg.png")
+ggsave(filename="./plots/linear_model_perf_avg.png")
 # TODO does future performance really peak this early (around week 9)?
-# probably so, but only because the test dataset is a moving target
-# try fixing test evaluation to weeks 18-34 for all models
+# something is up here - overfitting or lack of clean training/test split?
 
 
 ## TODO does counting a draw as 1.5 points for predicting future results help?
